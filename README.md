@@ -88,10 +88,22 @@ On xampp control panel, click mysql "admin". Create a mysql database "moodle" an
 Download libsodium.dll and copy to Windows/System32  
 
 php.ini  
+```
 max_input_vars = 5000
-
+post_max_size=300M
+upload_max_filesize=400M
+max_execution_time=300
+```
 
 Revise `config.php`, set properly and launch web browser.
+
+Admin accounts for INSTITUTE, 
+```
+mariadb moodle moodle
+
+admin
+oo@zju.edu.cn
+Moodle123..!
 
 # Install on Linux
 
