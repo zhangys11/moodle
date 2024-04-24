@@ -104,6 +104,21 @@ mariadb moodle moodle
 admin
 oo@zju.edu.cn
 Moodle123..!
+```
+
+# Trouble Shooting
+
+```
+To speed up the system, enable OPCache + JIT. However, after enabling OPCache + JIT I started getting a "white screen" and the message "virtualprotect() failed 87 the parameter is incorrect".  
+After disabling OPCache + JIT or OPCache the problem went away.
+
+- win: Apache + PHP as a module - !!! JIT problem !!!
+- win: IIS + PHP as FastCGI - OK
+- win: PHP CLI - OK
+- nix: Apache + PHP as a module - OK
+- nix: NGINX + PHP as FastCGI - OK
+- nix: PHP CLI - OK
+```
 
 # Install on Linux
 
