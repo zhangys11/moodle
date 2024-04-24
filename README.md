@@ -56,12 +56,13 @@ If IIS has already taken port 80 and 443, revise the conf files.
 
 apache/conf/http.conf 
 
-`Listen 80`
-`ServerName localhost:8008`
+`Listen 99`  
+`ServerName x.x.x.x`
 
 apache/conf/extra/http-ssl.conf  
 
-`Listen 443`
+`Listen 999`
+`ServerName localhost`
 
 Admin accounts for SZEH, 
 ```
