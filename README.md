@@ -121,6 +121,21 @@ After disabling OPCache + JIT or OPCache the problem went away.
 - nix: PHP CLI - OK
 ```
 
+# Speed up for video
+
+1.	In C:\MoodleWindowsInstaller-latest-404\server\apache\conf\httpd.conf, add MIME type:
+```
+<IfModule mime_module>
+    AddType application/x-compress .Z
+    AddType application/x-gzip .gz .tgz
+    AddType application/vnd.apple.mpegurl .m3u8  # Playlist files used by HTTP Live Streaming
+    AddType video/mp2t .ts # MPEG-2 Transport Streams (MPEG-2 TS) as a byte stream format for HTML Media Source Extensions
+</IfModule>
+```
+2.	Put the converted .m3u8 and ts files in a specific subfolder under C:\MoodleWindowsInstaller-latest-404\server\moodle\videos\. m3u8 is a playlist of multiple ts files.
+3.	In moodle, use url to access the m3u8 file, e.g., http://domain/videos/v1/1.m3u8
+
+
 # Install on Linux
 
 ## [Optional] 增加swap
