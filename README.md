@@ -132,7 +132,8 @@ After disabling OPCache + JIT or OPCache the problem went away.
     AddType video/mp2t .ts # MPEG-2 Transport Streams (MPEG-2 TS) as a byte stream format for HTML Media Source Extensions
 </IfModule>
 ```
-2.	Put the converted .m3u8 and ts files in a specific subfolder under C:\MoodleWindowsInstaller-latest-404\server\moodle\videos\. m3u8 is a playlist of multiple ts files.
+2. Use 'mp4_to_m3u8.bat' to convert mp4 to .m3u8 and ts files. Put converted files in a specific subfolder under C:\MoodleWindowsInstaller-latest-404\server\moodle\videos\. m3u8 is a playlist of multiple ts files.
+
 3.	In moodle, use url to access the m3u8 file, e.g., http://domain/videos/v1/1.m3u8
 
 
