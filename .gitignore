@@ -25,6 +25,9 @@
 /.patches/
 /.idea/
 .phpstorm.*
+!/.phpstorm.meta.php/
+/.phpstorm.meta.php/*
+!/.phpstorm.meta.php/di.php
 /nbproject/
 CVS
 .DS_Store
@@ -54,4 +57,3 @@ moodle-plugin-ci.phar
 .hugo_build.lock
 phpcs.xml
 jsconfig.json
-moodle.zip

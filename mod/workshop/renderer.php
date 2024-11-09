@@ -308,7 +308,7 @@ class mod_workshop_renderer extends plugin_renderer_base {
 
             if ($phase->active) {
                 // Mark the section as the current one.
-                $icon = $this->output->pix_icon('i/marked', '', 'moodle', ['role' => 'presentation']);
+                $icon = $this->output->pix_icon('i/marked', '');
                 $actions .= get_string('userplancurrentphase', 'workshop').' '.$icon;
 
             } else {
@@ -1022,13 +1022,13 @@ class mod_workshop_renderer extends plugin_renderer_base {
                 $url = new moodle_url($this->page->url);
                 $url->params(array('sortby' => $sortid, 'sorthow' => 'ASC'));
                 $out .= $this->output->action_icon($url, new pix_icon('t/sort_asc', get_string('sortasc', 'workshop')),
-                    null, array('class' => 'iconsort sort asc'));
+                    null, ['class' => 'sort asc']);
             }
             if ($sortby !== $sortid or $sorthow !== 'DESC') {
                 $url = new moodle_url($this->page->url);
                 $url->params(array('sortby' => $sortid, 'sorthow' => 'DESC'));
                 $out .= $this->output->action_icon($url, new pix_icon('t/sort_desc', get_string('sortdesc', 'workshop')),
-                    null, array('class' => 'iconsort sort desc'));
+                    null, ['class' => 'sort desc']);
             }
         }
         return $out;
@@ -1261,7 +1261,7 @@ class mod_workshop_renderer extends plugin_renderer_base {
         $output = '';
 
         $output .= $this->render_action_buttons($workshop, $userplan);
-        $output .= $this->heading(format_string($currentphasetitle), 3, null, 'mod_workshop-userplanheading');
+        $output .= $this->heading(format_string($currentphasetitle), 2, null, 'mod_workshop-userplanheading');
         $output .= $this->render($userplan);
         $output .= $this->view_submissions_report($workshop, $userplan, $page, $sortby, $sorthow);
 

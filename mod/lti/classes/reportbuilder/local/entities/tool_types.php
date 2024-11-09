@@ -102,7 +102,7 @@ class tool_types extends base {
                 $img = \html_writer::img($iconurl, get_string('courseexternaltooliconalt', 'mod_lti', $name),
                     ['class' => 'activityicon' . $iconclass]);
                 $name = \html_writer::span($name, 'align-self-center');
-                return \html_writer::div(\html_writer::div($img, 'mr-2 '.$iconcontainerclass) . $name, 'd-flex');
+                return \html_writer::div(\html_writer::div($img, 'me-2 '.$iconcontainerclass) . $name, 'd-flex');
             });
 
         // Description column.
@@ -179,7 +179,7 @@ class tool_types extends base {
                 "{$tablealias}.ltiversion"
             ))
                 ->add_joins($this->get_joins())
-                ->set_options_callback(static function() : array {
+                ->set_options_callback(static function(): array {
                     return ['LTI-1p0' => 'Legacy LTI', '1.3.0' => "LTI Advantage"];
                 })
         ];

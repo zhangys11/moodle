@@ -34,6 +34,7 @@ if (!defined('MAX_MODINFO_CACHE_SIZE')) {
 
 use core_courseformat\output\activitybadge;
 use core_courseformat\sectiondelegate;
+use core_courseformat\sectiondelegatemodule;
 
 /**
  * Information about a course that is cached in the course table 'modinfo' field (and then in
@@ -94,6 +95,12 @@ class course_modinfo {
     private $delegatedsections;
 
     /**
+     * Index of sections delegated by course modules, indexed by course module instance.
+     * @var null|section_info[]
+     */
+    private ?array $delegatedbycm = null;
+
+    /**
      * User ID
      * @var int
      */
@@ -139,6 +146,7 @@ class course_modinfo {
         'cms' => 'get_cms',
         'instances' => 'get_instances',
         'groups' => 'get_groups_all',
+        'delegatedbycm' => 'get_sections_delegated_by_cm',
     );
 
     /**
@@ -339,7 +347,7 @@ class course_modinfo {
         }
         $sections = [];
         foreach ($this->sectioninfobynum as $section) {
-            if (!$section->is_delegated()) {
+            if (!$section->get_component_instance()) {
                 $sections[$section->section] = $section;
             }
         }
@@ -350,7 +358,7 @@ class course_modinfo {
      * Gets data about specific numbered section.
      * @param int $sectionnumber Number (not id) of section
      * @param int $strictness Use MUST_EXIST to throw exception if it doesn't
-     * @return section_info Information for numbered section or null if not found
+     * @return ?section_info Information for numbered section or null if not found
      */
     public function get_section_info($sectionnumber, $strictness = IGNORE_MISSING) {
         if (!array_key_exists($sectionnumber, $this->sectioninfobynum)) {
@@ -408,6 +416,33 @@ class course_modinfo {
      */
     public function has_delegated_sections(): bool {
         return !empty($this->delegatedsections);
+    }
+
+    /**
+     * Gets data about section delegated by course modules.
+     *
+     * @return section_info[] sections array indexed by course module ID
+     */
+    public function get_sections_delegated_by_cm(): array {
+        if (!is_null($this->delegatedbycm)) {
+            return $this->delegatedbycm;
+        }
+        $this->delegatedbycm = [];
+        foreach ($this->delegatedsections as $componentsections) {
+            foreach ($componentsections as $section) {
+                $delegateinstance = $section->get_component_instance();
+                // We only return sections delegated by course modules. Sections delegated to other
+                // types of components must implement their own methods to get the section.
+                if (!$delegateinstance || !($delegateinstance instanceof sectiondelegatemodule)) {
+                    continue;
+                }
+                if (!$cm = $delegateinstance->get_cm()) {
+                    continue;
+                }
+                $this->delegatedbycm[$cm->id] = $section;
+            }
+        }
+        return $this->delegatedbycm;
     }
 
     /**
@@ -848,6 +883,39 @@ class course_modinfo {
      */
     public static function purge_course_module_cache(int $courseid, int $cmid): void {
         self::purge_course_modules_cache($courseid, [$cmid]);
+    }
+
+    /**
+     * Purges the coursemodinfo caches stored in MUC.
+     *
+     * @param int[] $courseids Array of course ids to purge the course caches
+     * for (or all courses if empty array).
+     *
+     */
+    public static function purge_course_caches(array $courseids = []): void {
+        global $DB;
+
+        // Purging might purge all course caches, so use a recordset and close it.
+        $select = '';
+        $params = null;
+        if (!empty($courseids)) {
+            [$sql, $params] = $DB->get_in_or_equal($courseids, SQL_PARAMS_NAMED);
+            $select = 'id ' . $sql;
+        }
+
+        $courses = $DB->get_recordset_select(
+            table: 'course',
+            select: $select,
+            params: $params,
+            fields: 'id',
+        );
+
+        // Purge each course's cache to make sure cache is recalculated next time
+        // the course is viewed.
+        foreach ($courses as $course) {
+            self::purge_course_cache($course->id);
+        }
+        $courses->close();
     }
 
     /**
@@ -1991,7 +2059,7 @@ class cm_info implements IteratorAggregate {
      * Returns a localised human-readable name of the module type.
      *
      * @param bool $plural If true, the function returns the plural form of the name.
-     * @return lang_string
+     * @return ?lang_string
      */
     public function get_module_type_name($plural = false) {
         $modnames = get_module_types_names($plural);
@@ -2136,6 +2204,19 @@ class cm_info implements IteratorAggregate {
         }
 
         return $cmrecord;
+    }
+
+    /**
+     * Returns the section delegated by this module, if any.
+     *
+     * @return ?section_info
+     */
+    public function get_delegated_section_info(): ?section_info {
+        $delegatedsections = $this->modinfo->get_sections_delegated_by_cm();
+        if (!array_key_exists($this->id, $delegatedsections)) {
+            return null;
+        }
+        return $delegatedsections[$this->id];
     }
 
     // Set functions
@@ -2312,9 +2393,9 @@ class cm_info implements IteratorAggregate {
      * Constructor should not be called directly; use {@link get_fast_modinfo()}
      *
      * @param course_modinfo $modinfo Parent object
-     * @param stdClass $notused1 Argument not used
+     * @param mixed $notused1 Argument not used
      * @param stdClass $mod Module object from the modinfo field of course table
-     * @param stdClass $notused2 Argument not used
+     * @param mixed $notused2 Argument not used
      */
     public function __construct(course_modinfo $modinfo, $notused1, $mod, $notused2) {
         $this->modinfo = $modinfo;
@@ -2569,10 +2650,13 @@ class cm_info implements IteratorAggregate {
             $this->availableinfo = '';
         }
 
+        $capabilities = [
+            'moodle/course:manageactivities',
+            'moodle/course:activityvisibility',
+            'moodle/course:viewhiddenactivities',
+        ];
         $this->uservisibleoncoursepage = $this->uservisible &&
-            ($this->visibleoncoursepage ||
-                has_capability('moodle/course:manageactivities', $this->get_context(), $userid) ||
-                has_capability('moodle/course:activityvisibility', $this->get_context(), $userid));
+            ($this->visibleoncoursepage || has_any_capability($capabilities, $this->get_context(), $userid));
         // Activity that is not available, not hidden from course page and has availability
         // info is actually visible on the course page (with availability info and without a link).
         if (!$this->uservisible && $this->visibleoncoursepage && $this->availableinfo) {
@@ -3142,6 +3226,14 @@ class section_info implements IteratorAggregate {
      */
     private ?sectiondelegate $_delegateinstance = null;
 
+    /** @var cm_info[]|null Section cm_info activities, null when it is not loaded yet. */
+    private array|null $_sequencecminfos = null;
+
+    /**
+     * @var bool|null $_isorphan True if the section is orphan for some reason.
+     */
+    private $_isorphan = null;
+
     /**
      * Availability conditions for this section based on the completion of
      * course-modules (array from course-module id to required completion state
@@ -3245,10 +3337,10 @@ class section_info implements IteratorAggregate {
      * Constructs object from database information plus extra required data.
      * @param object $data Array entry from cached sectioncache
      * @param int $number Section number (array key)
-     * @param int $notused1 argument not used (informaion is available in $modinfo)
-     * @param int $notused2 argument not used (informaion is available in $modinfo)
+     * @param mixed $notused1 argument not used (informaion is available in $modinfo)
+     * @param mixed $notused2 argument not used (informaion is available in $modinfo)
      * @param course_modinfo $modinfo Owner (needed for checking availability)
-     * @param int $notused3 argument not used (informaion is available in $modinfo)
+     * @param mixed $notused3 argument not used (informaion is available in $modinfo)
      */
     public function __construct($data, $number, $notused1, $notused2, $modinfo, $notused3) {
         global $CFG;
@@ -3339,7 +3431,7 @@ class section_info implements IteratorAggregate {
      * or availability information or additional properties added by course format
      *
      * @param string $name name of the property
-     * @return bool
+     * @return mixed
      */
     public function __get($name) {
         if (isset(self::$standardproperties[$name])) {
@@ -3388,6 +3480,10 @@ class section_info implements IteratorAggregate {
             $this->_available = $ci->is_available($this->_availableinfo, true,
                     $userid, $this->modinfo);
         }
+
+        if ($this->_available) {
+            $this->_available = $this->check_delegated_available();
+        }
         // Execute the hook from the course format that may override the available/availableinfo properties.
         $currentavailable = $this->_available;
         course_get_format($this->modinfo->get_course())->
@@ -3397,6 +3493,29 @@ class section_info implements IteratorAggregate {
             $this->_available = $currentavailable;
         }
         return $this->_available;
+    }
+
+    /**
+     * Check if the delegated component is available.
+     *
+     * @return bool
+     */
+    private function check_delegated_available(): bool {
+        /** @var sectiondelegatemodule $sectiondelegate */
+        $sectiondelegate = $this->get_component_instance();
+        if (!$sectiondelegate) {
+            return true;
+        }
+
+        if ($sectiondelegate instanceof sectiondelegatemodule) {
+            $parentcm = $sectiondelegate->get_cm();
+            if (!$parentcm->available) {
+                return false;
+            }
+            return $parentcm->get_section_info()->available;
+        }
+
+        return true;
     }
 
     /**
@@ -3446,17 +3565,54 @@ class section_info implements IteratorAggregate {
             // Has already been calculated or does not need calculation.
             return $this->_uservisible;
         }
-        $this->_uservisible = true;
-        if (!$this->_visible || !$this->get_available()) {
-            $coursecontext = context_course::instance($this->get_course());
-            if (!$this->_visible && !has_capability('moodle/course:viewhiddensections', $coursecontext, $userid) ||
-                    (!$this->get_available() &&
-                    !has_capability('moodle/course:ignoreavailabilityrestrictions', $coursecontext, $userid))) {
 
+        if (!$this->check_delegated_uservisible()) {
+            $this->_uservisible = false;
+            return $this->_uservisible;
+        }
+
+        $this->_uservisible = true;
+        if ($this->is_orphan() || !$this->_visible || !$this->get_available()) {
+            $coursecontext = context_course::instance($this->get_course());
+            if (
+                ($this->_isorphan || !$this->_visible)
+                && !has_capability('moodle/course:viewhiddensections', $coursecontext, $userid)
+            ) {
+                $this->_uservisible = false;
+            }
+            if (
+                $this->_uservisible
+                && !$this->get_available()
+                && !has_capability('moodle/course:ignoreavailabilityrestrictions', $coursecontext, $userid)
+            ) {
                 $this->_uservisible = false;
             }
         }
         return $this->_uservisible;
+    }
+
+    /**
+     * Check if the delegated component is user visible.
+     *
+     * @return bool
+     */
+    private function check_delegated_uservisible(): bool {
+        /** @var sectiondelegatemodule $sectiondelegate */
+        $sectiondelegate = $this->get_component_instance();
+        if (!$sectiondelegate) {
+            return true;
+        }
+
+        if ($sectiondelegate instanceof sectiondelegatemodule) {
+            $parentcm = $sectiondelegate->get_cm();
+            if (!$parentcm->uservisible) {
+                return false;
+            }
+            $result = $parentcm->get_section_info()->uservisible;
+            return $result;
+        }
+
+        return true;
     }
 
     /**
@@ -3470,6 +3626,27 @@ class section_info implements IteratorAggregate {
         } else {
             return '';
         }
+    }
+
+    /**
+     * Returns the course modules in this section.
+     *
+     * @return cm_info[]
+     */
+    public function get_sequence_cm_infos(): array {
+        if ($this->_sequencecminfos !== null) {
+            return $this->_sequencecminfos;
+        }
+        $sequence = $this->modinfo->sections[$this->_sectionnum] ?? [];
+        $cms = $this->modinfo->get_cms();
+        $result = [];
+        foreach ($sequence as $cmid) {
+            if (isset($cms[$cmid])) {
+                $result[] = $cms[$cmid];
+            }
+        }
+        $this->_sequencecminfos = $result;
+        return $result;
     }
 
     /**
@@ -3521,6 +3698,33 @@ class section_info implements IteratorAggregate {
      */
     public function is_delegated(): bool {
         return !empty($this->_component);
+    }
+
+    /**
+     * Returns true if this section is orphan.
+     *
+     * @return bool
+     */
+    public function is_orphan(): bool {
+        if ($this->_isorphan !== null) {
+            return $this->_isorphan;
+        }
+
+        $courseformat = course_get_format($this->modinfo->get_course());
+        // There are some cases where a restored course using third-party formats can
+        // have orphaned sections due to a fixed section number.
+        if ($this->_sectionnum > $courseformat->get_last_section_number()) {
+            $this->_isorphan = true;
+            return $this->_isorphan;
+        }
+        // Some delegated sections can belong to a plugin that is disabled or not present.
+        if ($this->is_delegated() && !$this->get_component_instance()) {
+            $this->_isorphan = true;
+            return $this->_isorphan;
+        }
+
+        $this->_isorphan = false;
+        return $this->_isorphan;
     }
 
     /**

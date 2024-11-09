@@ -17,6 +17,7 @@ namespace mod_bigbluebuttonbn\local;
 
 use backup;
 use backup_controller;
+use mod_bigbluebuttonbn\broker;
 use mod_bigbluebuttonbn\completion\custom_completion;
 use mod_bigbluebuttonbn\extension;
 use mod_bigbluebuttonbn\instance;
@@ -46,6 +47,7 @@ class extension_test extends \advanced_testcase {
      * @return void
      */
     public function setUp(): void {
+        parent::setUp();
         $this->resetAfterTest(true);
         $this->setup_fake_plugin('simple');
         $this->resetDebugging(); // We might have debugging messages issued from setup_fake_plugin here that we need to get rid of.
@@ -59,6 +61,7 @@ class extension_test extends \advanced_testcase {
      */
     public function tearDown(): void {
         $this->uninstall_fake_plugin('simple');
+        parent::tearDown();
     }
 
     /**
@@ -76,7 +79,6 @@ class extension_test extends \advanced_testcase {
         // Make the method public so we can test it.
         $reflectionextension = new \ReflectionClass(extension::class);
         $getclassimplementing = $reflectionextension->getMethod('get_instances_implementing');
-        $getclassimplementing->setAccessible(true);
         $allfoundinstances = $getclassimplementing->invoke(null, $apiclass);
         $foundclasses = array_map(
             function($instance) {
@@ -93,7 +95,7 @@ class extension_test extends \advanced_testcase {
      * @return void
      * @covers \mod_bigbluebuttonbn\local\extension\mod_instance_helper
      */
-    public function test_mod_instance_helper_add() {
+    public function test_mod_instance_helper_add(): void {
         global $DB;
         // Enable plugin.
         $this->enable_plugins(true);
@@ -112,7 +114,7 @@ class extension_test extends \advanced_testcase {
      * @return void
      * @covers \mod_bigbluebuttonbn\local\extension\mod_instance_helper
      */
-    public function test_mod_instance_helper_update() {
+    public function test_mod_instance_helper_update(): void {
         global $DB;
         $this->setAdminUser();
         // Enable plugin.
@@ -133,7 +135,7 @@ class extension_test extends \advanced_testcase {
      * @return void
      * @covers \mod_bigbluebuttonbn\local\extension\mod_instance_helper
      */
-    public function test_mod_instance_helper_delete() {
+    public function test_mod_instance_helper_delete(): void {
         global $DB;
         $this->initialise_mock_server();
         // Enable plugin.
@@ -152,7 +154,7 @@ class extension_test extends \advanced_testcase {
      * @return void
      * @covers \mod_bigbluebuttonbn\extension::action_url_addons
      */
-    public function test_action_url_addons() {
+    public function test_action_url_addons(): void {
         // Enable plugin.
         $this->enable_plugins(true);
         $course = $this->get_course();
@@ -175,7 +177,7 @@ class extension_test extends \advanced_testcase {
      * @return void
      * @covers \mod_bigbluebuttonbn\extension::action_url_addons
      */
-    public function test_join_url_with_additional_field() {
+    public function test_join_url_with_additional_field(): void {
         $this->initialise_mock_server();
         // Enable plugin.
         $this->enable_plugins(true);
@@ -369,6 +371,54 @@ class extension_test extends \advanced_testcase {
     }
 
     /**
+     * Test broker meeting_events with and without addons.
+     * @return void
+     * @covers \mod_bigbluebuttonbn\local\extension\broker_meeting_events_addons
+     */
+    public function test_broker_meeting_events_addons(): void {
+        $this->resetAfterTest();
+        global $DB;
+        // Enable plugin.
+        $this->enable_plugins(true);
+        $this->initialise_mock_server();
+        [$bbactivitycontext, $bbactivitycm, $bbactivity] = $this->create_instance(
+            $this->get_course());
+        $plugingenerator = $this->getDataGenerator()->get_plugin_generator('mod_bigbluebuttonbn');
+        $user = $this->getDataGenerator()->create_user();
+        $this->setUser($user);
+
+        // Now create a couple of events.
+        $instance = instance::get_from_instanceid($bbactivity->id);
+        set_config('bigbluebuttonbn_meetingevents_enabled', true);
+        $meeting = $plugingenerator->create_meeting([
+            'instanceid' => $instance->get_instance_id(),
+            'groupid' => $instance->get_group_id(),
+            'participants' => json_encode([$user->id]),
+        ]);
+
+        $events = [
+            (object) ['name' => 'talks'],
+            (object) ['name' => 'raisehand'],
+            (object) ['name' => 'raisehand'],
+        ];
+        foreach ($events as $edesc) {
+            $plugingenerator->add_meeting_event($user, $instance, $edesc->name, $edesc->data ?? '');
+        }
+        $result = $plugingenerator->send_all_events($instance);
+        $this->assertNotEmpty($result->data);
+        $data = json_encode($result->data);
+        $reflection = new \ReflectionClass(broker::class);
+        $method = $reflection->getMethod('process_extension_actions');
+        $method->setAccessible(true);
+        $method->invokeArgs(null, [$instance, $data]);
+        $addondata = $DB->get_field('bbbext_simple', 'meetingevents', ['bigbluebuttonbnid' => $bbactivity->id]);
+        $addondata = json_decode($addondata);
+        // Check that the data is received.
+        $this->assertEquals(json_encode($addondata), $data);
+    }
+
+
+    /**
      * Data provider for testing get_class_implementing
      *
      * @return array[]
@@ -398,7 +448,6 @@ class extension_test extends \advanced_testcase {
      */
     private function enable_plugins(bool $bbbenabled) {
         // First make sure that either BBB is enabled or not.
-        set_config('bigbluebuttonbn_default_dpa_accepted', $bbbenabled);
         \core\plugininfo\mod::enable_plugin('bigbluebuttonbn', $bbbenabled ? 1 : 0);
         $plugin = extension::BBB_EXTENSION_PLUGIN_NAME . '_simple';
         if ($bbbenabled) {

@@ -190,5 +190,11 @@ function xmldb_scorm_upgrade($oldversion) {
         // Scorm savepoint reached.
         upgrade_mod_savepoint(true, 2023100901, 'scorm');
     }
+    // Automatically generated Moodle v4.4.0 release upgrade line.
+    // Put any upgrade step following this.
+
+    // Automatically generated Moodle v4.5.0 release upgrade line.
+    // Put any upgrade step following this.
+
     return true;
 }

@@ -23,6 +23,7 @@ use context_system;
 use context_user;
 use core\context;
 use core_component;
+use core_date;
 use html_writer;
 use lang_string;
 use moodle_url;
@@ -281,11 +282,8 @@ class user extends base {
         ))
             ->add_joins($this->get_joins())
             ->add_fields($userpictureselect)
-            ->set_type(column::TYPE_INTEGER)
             ->set_is_sortable($this->is_sortable('picture'))
-            // It doesn't make sense to offer integer aggregation methods for this column.
-            ->set_disabled_aggregation(['avg', 'max', 'min', 'sum'])
-            ->add_callback(static function ($value, stdClass $row): string {
+            ->add_callback(static function($value, stdClass $row): string {
                 global $OUTPUT;
 
                 return !empty($row->id) ? $OUTPUT->user_picture($row, ['link' => false, 'alttext' => false]) : '';
@@ -429,6 +427,8 @@ class user extends base {
             'email' => new lang_string('email'),
             'city' => new lang_string('city'),
             'country' => new lang_string('country'),
+            'lang' => new lang_string('language'),
+            'timezone' => new lang_string('timezone'),
             'theme' => new lang_string('theme'),
             'description' => new lang_string('description'),
             'firstnamephonetic' => new lang_string('firstnamephonetic'),
@@ -445,6 +445,7 @@ class user extends base {
             'suspended' => new lang_string('suspended'),
             'confirmed' => new lang_string('confirmed', 'admin'),
             'username' => new lang_string('username'),
+            'auth' => new lang_string('authentication', 'moodle'),
             'moodlenetprofile' => new lang_string('moodlenetprofile', 'user'),
             'timecreated' => new lang_string('timecreated', 'core_reportbuilder'),
             'timemodified' => new lang_string('timemodified', 'core_reportbuilder'),
@@ -550,32 +551,6 @@ class user extends base {
         ))
             ->add_joins($this->get_joins());
 
-        // Authentication method filter.
-        $filters[] = (new filter(
-            select::class,
-            'auth',
-            new lang_string('authentication', 'moodle'),
-            $this->get_entity_name(),
-            "{$tablealias}.auth"
-        ))
-            ->add_joins($this->get_joins())
-            ->set_options_callback(static function(): array {
-                $plugins = core_component::get_plugin_list('auth');
-                $enabled = get_string('pluginenabled', 'core_plugin');
-                $disabled = get_string('plugindisabled', 'core_plugin');
-                $authoptions = [$enabled => [], $disabled => []];
-
-                foreach ($plugins as $pluginname => $unused) {
-                    $plugin = get_auth_plugin($pluginname);
-                    if (is_enabled_auth($pluginname)) {
-                        $authoptions[$enabled][$pluginname] = $plugin->get_title();
-                    } else {
-                        $authoptions[$disabled][$pluginname] = $plugin->get_title();
-                    }
-                }
-                return $authoptions;
-            });
-
         return $filters;
     }
 
@@ -599,6 +574,20 @@ class user extends base {
     }
 
     /**
+     * List of options for the field auth
+     *
+     * @return string[]
+     */
+    public static function get_options_for_auth(): array {
+        $authlist = array_keys(core_component::get_plugin_list('auth'));
+
+        return array_map(
+            fn(string $auth) => get_auth_plugin($auth)->get_title(),
+            array_combine($authlist, $authlist),
+        );
+    }
+
+    /**
      * List of options for the field country.
      *
      * @return string[]
@@ -608,9 +597,27 @@ class user extends base {
     }
 
     /**
+     * List of options for the field lang.
+     *
+     * @return string[]
+     */
+    public static function get_options_for_lang(): array {
+        return get_string_manager()->get_list_of_translations();
+    }
+
+    /**
+     * List of options for the field timezone.
+     *
+     * @return string[]
+     */
+    public static function get_options_for_timezone(): array {
+        return core_date::get_list_of_timezones(null, true);
+    }
+
+    /**
      * List of options for the field theme.
      *
-     * @return array
+     * @return string[]
      */
     public static function get_options_for_theme(): array {
         return array_map(

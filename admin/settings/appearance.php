@@ -152,6 +152,12 @@ if ($hassiteconfig or has_any_capability($capabilities, $systemcontext)) { // sp
     }
     $choices[HOMEPAGE_MYCOURSES] = new lang_string('mycourses', 'admin');
     $choices[HOMEPAGE_USER] = new lang_string('userpreference', 'admin');
+
+    // Allow hook callbacks to extend options.
+    $hook = new \core_user\hook\extend_default_homepage();
+    \core\di::get(\core\hook\manager::class)->dispatch($hook);
+    $choices += $hook->get_options();
+
     $temp->add(new admin_setting_configselect('defaulthomepage', new lang_string('defaulthomepage', 'admin'),
             new lang_string('configdefaulthomepage', 'admin'), get_default_home_page(), $choices));
     if (!isset($CFG->enabledashboard) || $CFG->enabledashboard) {
@@ -324,6 +330,10 @@ if ($hassiteconfig or has_any_capability($capabilities, $systemcontext)) { // sp
     $temp->add(new admin_setting_configcheckbox('logininfoinsecurelayout',
         new lang_string('logininfoinsecurelayout', 'admin'),
         new lang_string('logininfoinsecurelayout_desc', 'admin'), 0));
+    // Process primary navigation (custom menu) through Moodle filters.
+    $temp->add(new admin_setting_configcheckbox('navfilter',
+        new lang_string('navfilter', 'admin'),
+        new lang_string('navfilter_desc', 'admin'), 0));
     $temp->add(new admin_setting_configtextarea('custommenuitems', new lang_string('custommenuitems', 'admin'),
         new lang_string('configcustommenuitems', 'admin'), '', PARAM_RAW, '50', '10'));
     $defaultsettingcustomusermenuitems = [
@@ -349,14 +359,17 @@ if ($hassiteconfig or has_any_capability($capabilities, $systemcontext)) { // sp
         new lang_string('themeselector', 'admin'), $CFG->wwwroot . '/admin/themeselector.php'));
 
     // Settings page for each theme.
+    $ADMIN->add('appearance', new admin_category('themes', new lang_string('themesettingscustom', 'admin')));
     foreach (core_component::get_plugin_list('theme') as $theme => $themedir) {
         $settingspath = "$themedir/settings.php";
         if (file_exists($settingspath)) {
-            $settings = new admin_externalpage('themesetting' . $theme, new lang_string('pluginname', 'theme_'.$theme),
-                new moodle_url($settingspath), 'moodle/site:config', true);
+            $settings = new admin_settingpage("themesetting$theme", new lang_string('pluginname', "theme_$theme"),
+                'moodle/site:config', true
+            );
             include($settingspath);
-            if ($settings) {
-                $ADMIN->add('appearance', $settings);
+            // Add settings if not hidden (to avoid displaying the section if it appears empty in the UI).
+            if ($settings && !$settings->hidden) {
+                $ADMIN->add('themes', $settings);
             }
         }
     }
